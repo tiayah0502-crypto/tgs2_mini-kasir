@@ -2,47 +2,51 @@
 name: Build Kasir EXE
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Compile C++ for Windows
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2 and GCC
+      - name: Install C++ compiler
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
           update: true
           install: mingw-w64-ucrt-x86_64-gcc
 
-      - name: Find C++ source files
-        id: source
+      - name: Find source files
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Path . -Filter *.cpp -Recurse |
+          $files = Get-ChildItem -Path . -Recurse -File -Filter *.cpp |
             Where-Object {
-              $_.FullName -notmatch '[\\/](\.git|build|\.github)[\\/]'
+              $_.FullName -notmatch '[\\/](\.git|\.github|build)[\\/]'
             }
 
           if (-not $files) {
-            throw "Tidak ditemukan file .cpp di repository."
+            throw "Tidak ditemukan file .cpp. Periksa isi repository."
           }
 
-          $files.FullName | ForEach-Object { Write-Host $_ }
+          Write-Host "File C++ yang ditemukan:"
+          $files | ForEach-Object {
+            Write-Host $_.FullName
+          }
 
-      - name: Compile EXE
+      - name: Compile program
         shell: msys2 {0}
         run: |
+          set -e
+
           mapfile -t SOURCES < <(
             find . -type f -name '*.cpp' \
               -not -path './.git/*' \
@@ -51,16 +55,20 @@ jobs:
           )
 
           if [ ${#SOURCES[@]} -eq 0 ]; then
-            echo "File .cpp tidak ditemukan!"
+            echo "Tidak ada file C++."
             exit 1
           fi
 
           mkdir -p build
 
-          g++ -std=c++17 -O2 "${SOURCES[@]}" \
+          g++ -std=c++17 -O2 \
+            "${SOURCES[@]}" \
             -o build/kasir.exe
 
-      - name: Upload EXE artifact
+          test -f build/kasir.exe
+          echo "Build berhasil: build/kasir.exe"
+
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: kasir-windows-exe
