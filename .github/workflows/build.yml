@@ -1,0 +1,41 @@
+
+name: Build EXE Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Download source code
+        uses: actions/checkout@v4
+
+      - name: Compile C++ to EXE
+        shell: pwsh
+        run: |
+          $source = Get-ChildItem -Path . -Filter *.cpp -Recurse |
+            Where-Object { $_.FullName -notmatch '\\build\\|\\\.git\\' } |
+            Select-Object -First 1
+
+          if (-not $source) {
+            throw "File C++ (.cpp) tidak ditemukan!"
+          }
+
+          $output = "kasir.exe"
+
+          & g++ $source.FullName -o $output
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Kompilasi gagal!"
+          }
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: kasir-windows-exe
+          path: kasir.exe
