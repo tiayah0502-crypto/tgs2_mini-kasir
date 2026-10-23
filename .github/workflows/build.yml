@@ -1,41 +1,69 @@
 
-name: Build EXE Windows
+name: Build Kasir EXE
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Compile C++ for Windows
     runs-on: windows-latest
 
     steps:
-      - name: Download source code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Compile C++ to EXE
+      - name: Setup MSYS2 and GCC
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Find C++ source files
+        id: source
         shell: pwsh
         run: |
-          $source = Get-ChildItem -Path . -Filter *.cpp -Recurse |
-            Where-Object { $_.FullName -notmatch '\\build\\|\\\.git\\' } |
-            Select-Object -First 1
+          $files = Get-ChildItem -Path . -Filter *.cpp -Recurse |
+            Where-Object {
+              $_.FullName -notmatch '[\\/](\.git|build|\.github)[\\/]'
+            }
 
-          if (-not $source) {
-            throw "File C++ (.cpp) tidak ditemukan!"
+          if (-not $files) {
+            throw "Tidak ditemukan file .cpp di repository."
           }
 
-          $output = "kasir.exe"
+          $files.FullName | ForEach-Object { Write-Host $_ }
 
-          & g++ $source.FullName -o $output
+      - name: Compile EXE
+        shell: msys2 {0}
+        run: |
+          mapfile -t SOURCES < <(
+            find . -type f -name '*.cpp' \
+              -not -path './.git/*' \
+              -not -path './.github/*' \
+              -not -path './build/*'
+          )
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Kompilasi gagal!"
-          }
+          if [ ${#SOURCES[@]} -eq 0 ]; then
+            echo "File .cpp tidak ditemukan!"
+            exit 1
+          fi
 
-      - name: Upload EXE
+          mkdir -p build
+
+          g++ -std=c++17 -O2 "${SOURCES[@]}" \
+            -o build/kasir.exe
+
+      - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: kasir-windows-exe
-          path: kasir.exe
+          path: build/kasir.exe
+          if-no-files-found: error
+          retention-days: 14
