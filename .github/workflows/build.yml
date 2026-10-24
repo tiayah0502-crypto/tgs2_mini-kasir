@@ -1,77 +1,55 @@
-
 name: Build Kasir EXE
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install C++ compiler
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: mingw-w64-ucrt-x86_64-gcc
-
-      - name: Find source files
-        shell: pwsh
+      - name: Install MinGW Compiler
         run: |
-          $files = Get-ChildItem -Path . -Recurse -File -Filter *.cpp |
-            Where-Object {
-              $_.FullName -notmatch '[\\/](\.git|\.github|build)[\\/]'
-            }
+          sudo apt-get update
+          sudo apt-get install -y g++-mingw-w64-x86-64
 
-          if (-not $files) {
-            throw "Tidak ditemukan file .cpp. Periksa isi repository."
-          }
-
-          Write-Host "File C++ yang ditemukan:"
-          $files | ForEach-Object {
-            Write-Host $_.FullName
-          }
-
-      - name: Compile program
-        shell: msys2 {0}
+      - name: Find C++ Source
+        id: source
+        shell: bash
         run: |
-          set -e
-
-          mapfile -t SOURCES < <(
-            find . -type f -name '*.cpp' \
-              -not -path './.git/*' \
-              -not -path './.github/*' \
-              -not -path './build/*'
-          )
-
-          if [ ${#SOURCES[@]} -eq 0 ]; then
-            echo "Tidak ada file C++."
+          if [ -f "tgs2_cpp.cpp" ]; then
+            echo "file=tgs2_cpp.cpp" >> "$GITHUB_OUTPUT"
+          elif [ -f "tgs2_cpp" ]; then
+            echo "file=tgs2_cpp" >> "$GITHUB_OUTPUT"
+          elif [ -f "main.cpp" ]; then
+            echo "file=main.cpp" >> "$GITHUB_OUTPUT"
+          else
+            echo "File sumber C++ tidak ditemukan!"
             exit 1
           fi
 
-          mkdir -p build
-
-          g++ -std=c++17 -O2 \
-            "${SOURCES[@]}" \
-            -o build/kasir.exe
-
-          test -f build/kasir.exe
-          echo "Build berhasil: build/kasir.exe"
+      - name: Compile to EXE
+        run: |
+          x86_64-w64-mingw32-g++ \
+            -x c++ \
+            -std=c++17 \
+            -Wall \
+            -Wextra \
+            "${{ steps.source.outputs.file }}" \
+            -o kasir.exe
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: kasir-windows-exe
-          path: build/kasir.exe
+          name: Kasir-EXE
+          path: kasir.exe
           if-no-files-found: error
-          retention-days: 14
